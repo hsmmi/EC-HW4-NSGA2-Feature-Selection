@@ -1,5 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
+import time
 import numpy as np
 from knn import knn
 import matplotlib.pyplot as plt
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 @dataclass
 class chromosome:
     genes: np.empty(0, dtype=bool)
-    accuracy: float = 0.0
+    error: float = 0.0
     n_features: int = 0
 
 
@@ -23,21 +24,23 @@ class MOBGA_AOS:
     Objective 2: Number of selected features. Must be Minimized.
     """
 
-    def __init__(self, X, y, ngen=100, popsize=100):
+    def __init__(self, X, y, maxFEs=10000, popsize=100):
+        # Id = current time
+        self.id = time.strftime("%Y%m%d-%H%M%S")
         self.X = X
         self.y = y
-        self.ngen = ngen
+        self.maxFEs = maxFEs
         self.popsize = popsize
         self.n_features = X.shape[1]
         self.n_samples = X.shape[0]
         self.n_classes = len(np.unique(y))
         self.n_fold = 3
         self.k = 5
-        self.pc = 0.8
-        self.pm = 0.1
+        self.pc = 0.9
+        self.pm = 1 / self.n_features
         self.Q = 5
         self.OSP = np.full(self.Q, 1 / self.Q)
-        self.LP = 3
+        self.LP = 5
         self.RD = []
         self.row_RD = np.zeros(self.Q)
         self.PN = []
@@ -54,6 +57,10 @@ class MOBGA_AOS:
         }
         self.knn_model = knn(k=self.k, n_fold=self.n_fold)
         self.knn_model.fit(self.X, self.y)
+        self.igd = []
+        self.hv = []
+        self.best_hv = 0
+        self.same_hv = 0
 
         self.initialize_population()
 
@@ -63,21 +70,29 @@ class MOBGA_AOS:
         """
         for _ in range(self.popsize):
             # Initialize empty solution
-            solution = np.random.choice([True, False], size=self.n_features)
+            if self.n_features > 250:
+                solution = np.random.choice(
+                    [True, False], size=self.n_features, p=[0.1, 0.9]
+                )
+            else:
+                solution = np.random.choice([True, False], size=self.n_features)
             # Evaluate solution
-            solution_accuracy, solution_n_features = self.evaluate(solution)
+            solution_error, solution_n_features = self.evaluate(solution)
             # Add solution to population
             self.population.append(
                 chromosome(
                     genes=solution,
-                    accuracy=solution_accuracy,
+                    error=solution_error,
                     n_features=solution_n_features,
                 )
             )
         self.population = np.array(self.population)
 
     def evaluate(self, solution):
-        return self.knn_model.accuracy(solution), np.sum(solution)
+        """
+        Return classification error and number of features of solution
+        """
+        return 1 - self.knn_model.accuracy(solution), np.sum(solution)
 
     def single_point_crossover(self, parent1: chromosome, parent2: chromosome) -> tuple:
         """
@@ -93,16 +108,12 @@ class MOBGA_AOS:
             (parent2.genes[:crossover_point], parent1.genes[crossover_point:])
         )
         # Evaluate children
-        child1_accuracy, child1_n_features = self.evaluate(child1)
-        child2_accuracy, child2_n_features = self.evaluate(child2)
+        child1_error, child1_n_features = self.evaluate(child1)
+        child2_error, child2_n_features = self.evaluate(child2)
         # Return children
         return (
-            chromosome(
-                genes=child1, accuracy=child1_accuracy, n_features=child1_n_features
-            ),
-            chromosome(
-                genes=child2, accuracy=child2_accuracy, n_features=child2_n_features
-            ),
+            chromosome(genes=child1, error=child1_error, n_features=child1_n_features),
+            chromosome(genes=child2, error=child2_error, n_features=child2_n_features),
         )
 
     def two_point_crossover(self, parent1: chromosome, parent2: chromosome) -> tuple:
@@ -130,16 +141,12 @@ class MOBGA_AOS:
             )
         )
         # Evaluate children
-        child1_accuracy, child1_n_features = self.evaluate(child1)
-        child2_accuracy, child2_n_features = self.evaluate(child2)
+        child1_error, child1_n_features = self.evaluate(child1)
+        child2_error, child2_n_features = self.evaluate(child2)
         # Return children
         return (
-            chromosome(
-                genes=child1, accuracy=child1_accuracy, n_features=child1_n_features
-            ),
-            chromosome(
-                genes=child2, accuracy=child2_accuracy, n_features=child2_n_features
-            ),
+            chromosome(genes=child1, error=child1_error, n_features=child1_n_features),
+            chromosome(genes=child2, error=child2_error, n_features=child2_n_features),
         )
 
     def uniform_crossover(self, parent1: chromosome, parent2: chromosome) -> tuple:
@@ -152,16 +159,12 @@ class MOBGA_AOS:
         child1 = np.where(crossover_mask, parent1.genes, parent2.genes)
         child2 = np.where(crossover_mask, parent2.genes, parent1.genes)
         # Evaluate children
-        child1_accuracy, child1_n_features = self.evaluate(child1)
-        child2_accuracy, child2_n_features = self.evaluate(child2)
+        child1_error, child1_n_features = self.evaluate(child1)
+        child2_error, child2_n_features = self.evaluate(child2)
         # Return children
         return (
-            chromosome(
-                genes=child1, accuracy=child1_accuracy, n_features=child1_n_features
-            ),
-            chromosome(
-                genes=child2, accuracy=child2_accuracy, n_features=child2_n_features
-            ),
+            chromosome(genes=child1, error=child1_error, n_features=child1_n_features),
+            chromosome(genes=child2, error=child2_error, n_features=child2_n_features),
         )
 
     def shuffle_crossover(self, parent1: chromosome, parent2: chromosome) -> tuple:
@@ -198,16 +201,12 @@ class MOBGA_AOS:
             (parent2.genes[:crossover_point], parent1.genes[crossover_point:])
         )
         # Evaluate children
-        child1_accuracy, child1_n_features = self.evaluate(child1)
-        child2_accuracy, child2_n_features = self.evaluate(child2)
+        child1_error, child1_n_features = self.evaluate(child1)
+        child2_error, child2_n_features = self.evaluate(child2)
         # Return children
         return (
-            chromosome(
-                genes=child1, accuracy=child1_accuracy, n_features=child1_n_features
-            ),
-            chromosome(
-                genes=child2, accuracy=child2_accuracy, n_features=child2_n_features
-            ),
+            chromosome(genes=child1, error=child1_error, n_features=child1_n_features),
+            chromosome(genes=child2, error=child2_error, n_features=child2_n_features),
         )
 
     def mutation(self, offspring: chromosome) -> chromosome:
@@ -221,7 +220,7 @@ class MOBGA_AOS:
         # Perform mutation
         offspring.genes = np.where(mutation_mask, ~offspring.genes, offspring.genes)
         # Evaluate offspring
-        offspring.accuracy, offspring.n_features = self.evaluate(offspring.genes)
+        offspring.error, offspring.n_features = self.evaluate(offspring.genes)
         # Return offspring
         return offspring
 
@@ -231,24 +230,20 @@ class MOBGA_AOS:
         """
         # If solution1 is better than solution2 in both objectives
         if (
-            solution1.accuracy < solution2.accuracy
-            and solution1.n_features < solution2.n_features
+            solution1.error <= solution2.error
+            and solution1.n_features <= solution2.n_features
         ):
-            # Return True
-            return True
-        # If solution1 is better than solution2 in at least one objective
-        elif (
-            solution1.accuracy < solution2.accuracy
-            or solution1.n_features < solution2.n_features
-        ):
-            # Return False
-            return False
-        # If solution1 is worse than solution2 in both objectives
-        else:
-            # Return False
-            return False
+            # If solution1 is better than solution2 in at least one objective
+            if (
+                solution1.error < solution2.error
+                or solution1.n_features < solution2.n_features
+            ):
+                # Solution1 dominates solution2
+                return True
+        # Solution1 does not dominate solution2
+        return False
 
-    def fast_nondominated_sort(self, population):
+    def fast_nondominated_sort(self, population, first_front_only=False):
         """
         Fast nondominated sort
         """
@@ -278,6 +273,12 @@ class MOBGA_AOS:
             if n[p] == 0:
                 # Add solution1 to front 1
                 fronts[0].append(p)
+
+        # If only the first front is needed
+        if first_front_only:
+            # Return first front
+            return fronts[0]
+
         # Initialize front counter
         i = 0
         # While front i is not empty
@@ -307,11 +308,11 @@ class MOBGA_AOS:
         n = len(front)
         # Initialize crowding distance
         distance = np.zeros(n)
-        # For accuracy and number of features
+        # For error and number of features
         for m in range(2):
             # Get objective values of solutions in front
             f = np.array(
-                [getattr(front[i], ["accuracy", "n_features"][m]) for i in range(n)]
+                [getattr(front[i], ["error", "n_features"][m]) for i in range(n)]
             )
             # Get indices of sorted objective values
             sorted_indices = np.argsort(f)
@@ -341,7 +342,7 @@ class MOBGA_AOS:
         # Initialize front counter
         i = 0
         # While adding front i to survivors does not exceed population size
-        while len(survivors) + len(fronts[i]) <= self.popsize:
+        while len(survivors) + len(fronts[i]) < self.popsize:
             # Add front i to survivors
             survivors.extend(fronts[i])
             # Increment front counter
@@ -430,7 +431,7 @@ class MOBGA_AOS:
             s2 = np.sum(np.array(self.PN)[:, q])
             # OSP for the qth operator can be calculated as
             # to prevent being divided by zero
-            s3 = 0 if s1 == 0 else s1
+            s3 = self.delta if s1 == 0 else s1
             # refers to the probability assigned to qth operator
             s4 = s1 / (s3 + s2)
             # update the qth element of OSP
@@ -443,6 +444,28 @@ class MOBGA_AOS:
         self.PN = []
         self.row_PN = np.zeros(self.Q)
 
+    def union(
+        self, population: np.ndarray[chromosome], offspring: list[chromosome]
+    ) -> list[chromosome]:
+        """
+        Union of population and offspring
+        """
+        set1 = set([tuple(solution.genes) for solution in population])
+        set2 = set([tuple(solution.genes) for solution in offspring])
+        union = set1.union(set2)
+        population = []
+        for solution in union:
+            error, n_features = self.evaluate(np.array(solution))
+            population.append(
+                chromosome(
+                    genes=np.array(solution),
+                    error=error,
+                    n_features=n_features,
+                )
+            )
+
+        return np.array(population)
+
     def run(self):
         """
         Run MOBGA-AOS
@@ -450,9 +473,10 @@ class MOBGA_AOS:
         # Counter for updating OSP each LP generation
         k = 0
         # For each generation
-        for g in range(self.ngen):
+        nEF = 0
+        while nEF < self.maxFEs and self.same_hv < 5:
             # Initialize empty set of offspring
-            print(g)
+            print(nEF, len(self.pareto_front), self.same_hv)
             offspring = []
             # For each parent
             for i in range(self.popsize // 2):
@@ -483,28 +507,90 @@ class MOBGA_AOS:
                 self.update_OSP()
                 k = 0
             # R ← P union Pnew
-            self.population = np.concatenate((self.population, offspring))
+            self.population = self.union(self.population, offspring)
             # Environmental Selection
             survivors = self.selection()
             # P ← R
             self.population = self.population[survivors]
             # Select non-dominated solutions in P as PF
-            self.pareto_front = self.fast_nondominated_sort(self.population)[0]
-            # Return Pareto front
-        self.plot_pareto_front()
+            self.pareto_front = self.fast_nondominated_sort(self.population, True)
+            # Update nEF
+            nEF += self.popsize
+            list(self.population[self.pareto_front])
+            # Store IGD and HV of current generation
+            hv = self.calculate_hypervolume()
+            self.hv.append(hv)
+            if hv > self.best_hv:
+                self.best_hv = hv
+                self.same_hv = 0
+            else:
+                self.same_hv += 1
+            print("HV: ", hv)
+        # Return Pareto front
         return self.pareto_front
 
     def plot_pareto_front(self) -> None:
         """
         Plot Pareto front
         """
+
         # Get objective values of solutions in Pareto front
-        f1 = np.array([self.population[i].accuracy for i in self.pareto_front])
-        f2 = np.array([self.population[i].n_features for i in self.pareto_front])
-        # Plot Pareto front
+        f1 = np.array([self.population[i].n_features for i in self.pareto_front])
+        f2 = np.array([self.population[i].error for i in self.pareto_front])
+        # Plot all solutions
         plt.figure(figsize=(8, 6))
-        plt.scatter(f1, f2, c="b", marker="o", s=30)
-        plt.xlabel("Classification error")
-        plt.ylabel("Number of features")
-        plt.title("Pareto front")
+        plt.scatter(
+            [solution.n_features for solution in self.population],
+            [solution.error for solution in self.population],
+            c="r",
+            marker="o",
+            s=30,
+            label="All solutions",
+        )
+        # Plot Pareto front and connect them with lines
+        # Sort solutions in Pareto front by number of features
+        sorted_indices = np.argsort(f1)
+        # Plot Pareto front
+        plt.plot(f1[sorted_indices], f2[sorted_indices], c="b", label="Pareto front")
+        plt.xlabel("Solution size")
+        plt.ylabel("Classification error")
+        plt.title(f"Pareto front {self.n_features}")
+        # Save on Images folder
+        plt.savefig(f"Images/{self.n_features}_{self.id}_pareto_front.png")
+        plt.show()
+
+    def calculate_hypervolume(self) -> float:
+        """
+        Calculate hypervolume
+        """
+        # Get reference point
+        refrence_point = np.array([self.n_features, 1])
+        # Get objective values of solutions in Pareto front
+        f1 = np.array([self.population[i].n_features for i in self.pareto_front])
+        f2 = np.array([self.population[i].error for i in self.pareto_front])
+        sorted_indices = np.argsort(f1)
+        # Initialize hypervolume
+        hypervolume = (refrence_point[0] - f1[sorted_indices[0]]) * (
+            refrence_point[1] - f2[sorted_indices[0]]
+        )
+        # For each solution in Pareto front
+        for i in range(1, len(self.pareto_front)):
+            # Add hypervolume
+            hypervolume += (refrence_point[0] - f1[sorted_indices[i]]) * (
+                f2[sorted_indices[i - 1]] - f2[sorted_indices[i]]
+            )
+        # Return hypervolume
+        return hypervolume
+
+    def plot_hypervolume(self) -> None:
+        """
+        Plot hypervolume
+        """
+        plt.figure(figsize=(8, 6))
+        plt.plot(self.hv)
+        plt.xlabel("Generation")
+        plt.ylabel("Hypervolume")
+        plt.title(f"Hypervolume {self.n_features}")
+        # Save on Images folder
+        plt.savefig(f"Images/{self.n_features}_{self.id}_hypervolume.png")
         plt.show()

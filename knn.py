@@ -1,5 +1,4 @@
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import numpy as np
 
@@ -25,11 +24,13 @@ class knn:
     def accuracy(self, solution):
         """
         Evaluate solution using k-NN (k = 3) with n fold cross-validation (n = 3)
+
+        Return accuracy
         """
         # Split data into n folds
         folds = np.array_split(np.random.permutation(self.n_samples), self.n_fold)
         # Evaluate solution using n fold cross-validation
-        error = 0
+        accuracy = 0
         for i in range(self.n_fold):
             # Get train and test data
             test_idx = folds[i]
@@ -37,19 +38,21 @@ class knn:
             X_train, y_train = self.X[train_idx], self.y[train_idx]
             X_test, y_test = self.X[test_idx], self.y[test_idx]
             # Evaluate solution
-            error += self.knn(X_train, y_train, X_test, y_test, solution)
-        # Return average error
-        return error / self.n_fold
+            accuracy += self.knn(X_train, y_train, X_test, y_test, solution)
+        # Return average accuracy
+        return accuracy / self.n_fold
 
     def knn(self, X_train, y_train, X_test, y_test, solution):
         """
-        k-NN (k = 3)
+        Evaluate solution using k-NN (k = 3)
+
+        Return accuracy
         """
         # Get selected features
         selected_features = np.where(solution == 1)[0]
         # If no feature is selected, return 1
         if len(selected_features) == 0:
-            return 1
+            return 0
         # Get selected features
         X_train = X_train[:, selected_features]
         X_test = X_test[:, selected_features]
@@ -59,4 +62,4 @@ class knn:
         # Predict
         y_pred = clf.predict(X_test)
         # Return error
-        return 1 - accuracy_score(y_test, y_pred)
+        return accuracy_score(y_test, y_pred)
