@@ -61,6 +61,8 @@ class MOBGA_AOS:
         self.hv = []
         self.best_hv = 0
         self.same_hv = 0
+        self.max_same_hv = 10
+        self.p_true = 1 / self.n_features
 
         self.initialize_population()
 
@@ -72,7 +74,9 @@ class MOBGA_AOS:
             # Initialize empty solution
             if self.n_features > 250:
                 solution = np.random.choice(
-                    [True, False], size=self.n_features, p=[0.1, 0.9]
+                    [True, False],
+                    size=self.n_features,
+                    p=[self.p_true, 1 - self.p_true],
                 )
             else:
                 solution = np.random.choice([True, False], size=self.n_features)
@@ -297,6 +301,7 @@ class MOBGA_AOS:
                         fronts[i + 1].append(q)
             # Increment front counter
             i += 1
+        del fronts[-1]
         # Return fronts
         return fronts
 
@@ -474,7 +479,7 @@ class MOBGA_AOS:
         k = 0
         # For each generation
         nEF = 0
-        while nEF < self.maxFEs and self.same_hv < 5:
+        while nEF < self.maxFEs and self.same_hv < self.max_same_hv:
             # Initialize empty set of offspring
             print(nEF, len(self.pareto_front), self.same_hv)
             offspring = []
@@ -570,14 +575,18 @@ class MOBGA_AOS:
         f2 = np.array([self.population[i].error for i in self.pareto_front])
         sorted_indices = np.argsort(f1)
         # Initialize hypervolume
-        hypervolume = (refrence_point[0] - f1[sorted_indices[0]]) * (
-            refrence_point[1] - f2[sorted_indices[0]]
+        hypervolume = (
+            (refrence_point[0] - f1[sorted_indices[0]])
+            * (refrence_point[1] - f2[sorted_indices[0]])
+            / self.n_features
         )
         # For each solution in Pareto front
         for i in range(1, len(self.pareto_front)):
             # Add hypervolume
-            hypervolume += (refrence_point[0] - f1[sorted_indices[i]]) * (
-                f2[sorted_indices[i - 1]] - f2[sorted_indices[i]]
+            hypervolume += (
+                (refrence_point[0] - f1[sorted_indices[i]])
+                * (f2[sorted_indices[i - 1]] - f2[sorted_indices[i]])
+                / self.n_features
             )
         # Return hypervolume
         return hypervolume

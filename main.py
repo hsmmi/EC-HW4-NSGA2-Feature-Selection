@@ -2,7 +2,7 @@ import pandas as pd
 from MOBGA_AOS import MOBGA_AOS
 
 # Read dataset
-data = pd.read_csv("Datasets/DS04.csv", header=None).values
+data = pd.read_csv("Datasets/DS02.csv", header=None).values
 # Get features and labels
 X = data[:, :-1]
 y = data[:, -1]
