@@ -471,69 +471,6 @@ class MOBGA_AOS:
 
         return np.array(population)
 
-    def run(self):
-        """
-        Run MOBGA-AOS
-        """
-        # Counter for updating OSP each LP generation
-        k = 0
-        # For each generation
-        nEF = 0
-        while nEF < self.maxFEs and self.same_hv < self.max_same_hv:
-            # Initialize empty set of offspring
-            print(nEF, len(self.pareto_front), self.same_hv)
-            offspring = []
-            # For each parent
-            for i in range(self.popsize // 2):
-                operator_idx = self.roulette_wheel_selection()
-                # Randomly select two individuals as parents
-                id1, id2 = np.random.choice(self.popsize, size=2, replace=False)
-                parent1 = self.population[id1]
-                parent2 = self.population[id2]
-                # Perform crossover
-                child1, child2 = self.crossover_operators[operator_idx](
-                    parent1, parent2
-                )
-                # Perform mutation
-                child1 = self.mutation(child1)
-                child2 = self.mutation(child2)
-                # creditAssignment
-                self.credit_assignment(parent1, parent2, child1, child2, operator_idx)
-                # Add offspring to set of offspring
-                offspring.append(child1)
-                offspring.append(child2)
-            k += 1
-            # Append nReward to the kth row of RD
-            self.RD.append(self.row_RD)
-            # Append nPenalty to the kth row of PN
-            self.PN.append(self.row_PN)
-            # Update OSP
-            if k == self.LP:
-                self.update_OSP()
-                k = 0
-            # R ← P union Pnew
-            self.population = self.union(self.population, offspring)
-            # Environmental Selection
-            survivors = self.selection()
-            # P ← R
-            self.population = self.population[survivors]
-            # Select non-dominated solutions in P as PF
-            self.pareto_front = self.fast_nondominated_sort(self.population, True)
-            # Update nEF
-            nEF += self.popsize
-            list(self.population[self.pareto_front])
-            # Store IGD and HV of current generation
-            hv = self.calculate_hypervolume()
-            self.hv.append(hv)
-            if hv > self.best_hv:
-                self.best_hv = hv
-                self.same_hv = 0
-            else:
-                self.same_hv += 1
-            print("HV: ", hv)
-        # Return Pareto front
-        return self.pareto_front
-
     def plot_pareto_front(self) -> None:
         """
         Plot Pareto front
@@ -603,3 +540,66 @@ class MOBGA_AOS:
         # Save on Images folder
         plt.savefig(f"Images/{self.n_features}_{self.id}_hypervolume.png")
         plt.show()
+
+    def run(self):
+        """
+        Run MOBGA-AOS
+        """
+        # Counter for updating OSP each LP generation
+        k = 0
+        # For each generation
+        nEF = 0
+        while nEF < self.maxFEs and self.same_hv < self.max_same_hv:
+            # Initialize empty set of offspring
+            print(f"Iteration {int(nEF/self.popsize)}, same_hv: {self.same_hv}")
+            offspring = []
+            # For each parent
+            for i in range(self.popsize // 2):
+                operator_idx = self.roulette_wheel_selection()
+                # Randomly select two individuals as parents
+                id1, id2 = np.random.choice(self.popsize, size=2, replace=False)
+                parent1 = self.population[id1]
+                parent2 = self.population[id2]
+                # Perform crossover
+                child1, child2 = self.crossover_operators[operator_idx](
+                    parent1, parent2
+                )
+                # Perform mutation
+                child1 = self.mutation(child1)
+                child2 = self.mutation(child2)
+                # creditAssignment
+                self.credit_assignment(parent1, parent2, child1, child2, operator_idx)
+                # Add offspring to set of offspring
+                offspring.append(child1)
+                offspring.append(child2)
+            k += 1
+            # Append nReward to the kth row of RD
+            self.RD.append(self.row_RD)
+            # Append nPenalty to the kth row of PN
+            self.PN.append(self.row_PN)
+            # Update OSP
+            if k == self.LP:
+                self.update_OSP()
+                k = 0
+            # R ← P union Pnew
+            self.population = self.union(self.population, offspring)
+            # Environmental Selection
+            survivors = self.selection()
+            # P ← R
+            self.population = self.population[survivors]
+            # Select non-dominated solutions in P as PF
+            self.pareto_front = self.fast_nondominated_sort(self.population, True)
+            # Update nEF
+            nEF += self.popsize
+            list(self.population[self.pareto_front])
+            # Store IGD and HV of current generation
+            hv = self.calculate_hypervolume()
+            self.hv.append(hv)
+            if hv > self.best_hv + self.delta * 10:
+                self.best_hv = hv
+                self.same_hv = 0
+            else:
+                self.same_hv += 1
+            print("HV: ", hv)
+        # Return Pareto front and maximum hypervolume
+        return self.pareto_front, self.best_hv
